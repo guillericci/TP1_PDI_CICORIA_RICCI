@@ -55,7 +55,7 @@ python -m pip install --upgrade pip
 Luego instalamos las librerías requeridas:
 
 ```bash
-pip install opencv-python numpy matplotlib
+pip install opencv-python numpy matplotlib os
 ```
 ---
 ### Cómo ejecutar el programa: 
