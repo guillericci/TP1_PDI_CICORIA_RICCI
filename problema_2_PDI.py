@@ -69,12 +69,11 @@ def validar_campos(campos):
     # --- Campo: Name ---
     campo_name = campos[1]
     # Umbralado binario de la imagen
-    campo_name_bin = (campo_name < 240).astype(np.uint8)
-    cant_name, centros = contar_componentes_validas(campo_name_bin)
+    cant_name, centros_name = contar_componentes_validas(campo_name)
 
     palabras = 1
-    if len(centros) > 1:
-        xs = sorted([c[0] for c in centros])
+    if len(centros_name) > 1:
+        xs = sorted([c[0] for c in centros_name])
         difs = np.diff(xs)
         palabras += np.sum(difs > 9)  # Separación entre letras → palabras
 
@@ -83,24 +82,27 @@ def validar_campos(campos):
     # --- Campo: ID ---
     campo_id = campos[3]
     # Umbralado binario de la imagen
-    campo_id_bin = (campo_id < 240).astype(np.uint8)
-    cant_id, _ = contar_componentes_validas(campo_id_bin)
+    cant_id, centros_id = contar_componentes_validas(campo_id)
 
-    resultados['ID'] = "OK" if cant_id == 8 else "MAL"
+    espacios = 0
+    if len(centros_id) > 1:
+        xs_id = sorted([c[0] for c in centros_id])
+        difs_id = np.diff(xs_id)
+        espacios += np.sum(difs_id > 9)  # Separación entre letras → palabras
+
+    resultados['ID'] = "OK" if cant_id == 8 and espacios == 0 else "MAL"
 
     # --- Campo: Code ---
     campo_code = campos[5]
     # Umbralado binario de la imagen
-    campo_code_bin = (campo_code < 240).astype(np.uint8)
-    cant_code, _ = contar_componentes_validas(campo_code_bin)
+    cant_code, _ = contar_componentes_validas(campo_code)
 
     resultados['Code'] = "OK" if cant_code == 1 else "MAL"
 
     # --- Campo: Date ---
     campo_date = campos[7]
-    # Umbralado binario de la imagen
-    campo_date_bin = (campo_date < 240).astype(np.uint8)
-    cant_date, _ = contar_componentes_validas(campo_date_bin)
+    # Umbralado binario de la image
+    cant_date, _ = contar_componentes_validas(campo_date)
 
     resultados['Date'] = "OK" if cant_date == 8 else "MAL"
 
@@ -134,52 +136,69 @@ except NameError:
 
 
 # Cargar imagen en escala de grises
-for num in range(2):
+for num in range(5):
     filename = f"multiple_choice_{num + 1}.png"
     ruta = os.path.join(dir_actual, filename)
     img = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
 
-    print(f"\n📄 Evaluando exámen: {filename}")
-    # Recorte del encabezado
-    encabezado = img[102:135, 22:775]
-
-    
-    plt.figure(figsize=(10, 8))
-    plt.imshow(encabezado, cmap='gray')
-    plt.title(f"Encabezado del Exámen: {filename}")
-    plt.axis("off")
-    plt.show()
+    print(f"📄 Evaluando exámen: {filename}")
     
     # Detectar lo que no es blanco
-    no_blanco = encabezado < 240
+    no_blanco = img< 240
     no_blanco_uint8 = no_blanco.astype(np.uint8)
-
-    # Suma por filas y columnas
-    enc_cols = np.sum(no_blanco_uint8, axis=0)
+    
+    # Suma por filas
     enc_rows = np.sum(no_blanco_uint8, axis=1)
 
-    # Umbrales
-    umbral_vertical = 25
+    # Umbral horizontal
     umbral_horizontal = 300
-
-    # Detección de líneas (sin agrupar)
-    lineas_verticales_raw = np.where(enc_cols > umbral_vertical)[0]
+    
+    # Detección de líneas horizontales (sin agrupar)
     lineas_horizontales_raw = np.where(enc_rows > umbral_horizontal)[0]
 
     # Agrupar líneas cercanas
-    lineas_verticales = agrupar_lineas(lineas_verticales_raw, distancia_minima=3)
     lineas_horizontales = agrupar_lineas(lineas_horizontales_raw, distancia_minima=2)
 
     # Coordenadas para recorte vertical (encabezado de una sola fila)
     y_ini = lineas_horizontales[0]+3#se suma 3 para que recorte la primer línea
     y_fin = lineas_horizontales[-1]
+    
+    # Recorte del encabezado
+    encabezado = img[y_ini:y_fin, :]
+
+    # Graficamos el encabezado recortado
+    plt.figure(figsize=(10, 8))
+    plt.imshow(encabezado, cmap='gray')
+    plt.title("Imagen encabeado")
+    plt.axis("off")
+    plt.show()
+    
+    # Detectar lo que no es blanco
+    no_blanco_enc = encabezado < 240
+    no_blanco_uint8_enc = no_blanco_enc.astype(np.uint8)
+
+    # Suma por columnas 
+    enc_cols = np.sum(no_blanco_uint8_enc, axis=0)
+
+    # Umbrales
+    umbral_vertical = 18
+   
+    # Detección de líneas (sin agrupar)
+    lineas_verticales_raw = np.where(enc_cols > umbral_vertical)[0]
+
+    # Agrupar líneas cercanas
+    lineas_verticales = agrupar_lineas(lineas_verticales_raw, distancia_minima=3)
+
+   # Umbralizar detectando lo que no es blanco
+    no_blanco_enc = encabezado <200
+    no_blanco_uint8_enc = no_blanco_enc.astype(np.uint8) * 255  # Para ver la imagen como binaria
 
     # Recorte de campos entre pares de líneas verticales
     campos = []
     for i in range(len(lineas_verticales) - 1):
         x_ini = lineas_verticales[i]+2#se suma dos para que recorte la primer línea
         x_fin = lineas_verticales[i + 1]
-        campo = encabezado[y_ini:y_fin, x_ini:x_fin]
+        campo = no_blanco_uint8_enc[:, x_ini:x_fin]
         campos.append(campo)
         
     #Validamos campos
@@ -187,8 +206,16 @@ for num in range(2):
     print("Resultados de validación:")
     for campo, estado in resultados.items():
         print(f"{campo}: {estado}")
+
     #Recortamos la región de respuestas de la imagen
-    img_respuestas = img[155:1056, 10:810]
+    img_respuestas = img[y_fin+2: , : ]
+    
+    #Graficamos la imagen recortada con las respuestas
+    plt.figure(figsize=(10, 8))
+    plt.imshow(img_respuestas, cmap='gray')
+    plt.title("Imagen respuestas")
+    plt.axis("off")
+    plt.show()
 
     # Detectamos las zonas negras (donde hay letras/marcas) 
     img_zeros = img_respuestas < 240  # TRUE donde el pixel es negro
@@ -218,8 +245,9 @@ for num in range(2):
     plt.show()
     """
     # Obtener inicios y finales de los renglones 
-    x = np.diff(img_row_zeros.astype(np.int8))
-    renglones_indxs = np.argwhere(x)
+    x = np.diff(img_row_zeros.astype(np.int8))#calcula la diferencia entre elementos consecutivos a lo largo de un eje dado (en este caso, las filas de la imagen).
+    renglones_indxs = np.argwhere(x)#obtiene los indices donde hay cambios
+
 
     ii = np.arange(0, len(renglones_indxs), 2)
     renglones_indxs[ii] += 1  # Ajustamos los índices de inicio
@@ -228,7 +256,7 @@ for num in range(2):
     x2 = np.diff(img_column_zeros.astype(np.int8))
     columnas_indxs = np.argwhere(x2)
 
-    ii2 = np.arange(0, len(columnas_indxs), 2)
+    ii2 = np.arange(0, len(columnas_indxs), 2)#Crea un array con índices desde 0 hasta el largo de renglones_indxs, con paso de 2.
     columnas_indxs[ii2] += 1  # Ajustamos los índices de inicio
 
     # Recortar los renglones y las columnas dentro de cada renglón
@@ -262,7 +290,7 @@ for num in range(2):
 
 
     # Analizar cada columna y devolver las respuestas
-    umbral = 0.8  # Umbral de los píxeles no nulos
+    umbral = 0.7  # Umbral de los píxeles no nulos
     respuestas = {}
 
     # Definir las respuestas correspondientes para cada columna
